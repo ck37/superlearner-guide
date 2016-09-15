@@ -1,0 +1,522 @@
+# SuperLearner Guide
+
+September 16, 2016
+
+Instructor: Chris Kennedy
+
+Assumed prior training:
+
+* D-Lab's R Intro (12 hours) or Chris Paciorek's R Bootcamp (14 hours)
+* Evan's caret training (yesterday)
+
+## Outline
+
+* What is SuperLearner
+* Installing
+* Create dataset
+* Fit single models: lasso, randomForest, GBM
+* Fit ensemble
+* Customize a model parameter.
+* Fit a caret model.
+* Fit ensemble with external cross-validation.
+* Plot external cross-validation results.
+* Fit multiple hyperparameters for a learner (e.g. RF)
+* Feature selection (screening)
+* Optimize for AUC.
+* References
+
+## Background
+
+## Installing
+
+Install the stable version from CRAN:
+```{r eval=F}
+install.packages("SuperLearner")
+```
+
+Or the development version from Github:
+```{r eval=F}
+if (!require(devtools)) install.packages("devtools")
+devtools::install_github("ecpolley/SuperLearner")
+```
+
+The Github version has some new features, fixes some bugs, but may also introduce new bugs. Let's use the github version, and if we run into any bugs we can report them.
+
+## Create dataset
+
+We will be using the "BreastCancer" dataset which is available from the "mlbench" package.
+
+```{r}
+############################
+# Setup test dataset from mlbench.
+
+# NOTE: install mlbench package if you don't already have it.
+data(BreastCancer, package="mlbench")
+
+# Remove missing values - could impute for improved accuracy.
+data = na.omit(BreastCancer)
+
+# Set a seed for reproducibility in this random sampling.
+set.seed(1)
+
+# Expand out factors into indicators.
+data2 = data.frame(model.matrix( ~ . - 1, subset(data, select = -c(Id, Class))))
+
+# Check dimensions after we expand our dataset.
+dim(data2)
+
+library(caret)
+# Remove zero variance (constant) and near-zero-variance columns.
+# This can help reduce overfitting and also helps us use a basic glm().
+# However, there is a slight risk that we are discarding helpful information.
+preproc = caret::preProcess(data2, method = c("zv", "nzv"))
+data2 = predict(preproc, data2)
+rm(preproc)
+
+# Review our dimensions.
+dim(data2)
+
+# Reduce to a dataset of 100 observations to speed up model fitting.
+train_obs = sample(nrow(data2), 100)
+
+# X is our training sample.
+X = data2[train_obs, ]
+
+# Create a holdout set for evaluating model performance.
+X_holdout = data2[-train_obs, ]
+
+# Create a binary outcome variable.
+outcome = as.numeric(data$Class == "malignant")
+Y = outcome[train_obs]
+Y_holdout = outcome[-train_obs]
+
+# Review the outcome variable distribution.
+table(Y, useNA = "ifany")
+
+# Review the covariate dataset.
+str(X)
+
+# Clean up
+rm(data2, outcome)
+```
+
+## Review available models
+
+```{r}
+library(SuperLearner)
+
+# Review available models.
+listWrappers()
+
+# Peek at code for a model.
+SL.glmnet
+```
+
+## Fit single models
+
+Let's fit 2 separate models: lasso (sparse, penalized OLS) and randomForest.
+
+```{r}
+set.seed(1)
+
+# Fit lasso model.
+sl_lasso = SuperLearner(Y = Y, X = X, family = binomial(), SL.library = "SL.glmnet")
+sl_lasso
+
+# Fit random forest.
+sl_rf = SuperLearner(Y = Y, X = X, family = binomial(), SL.library = "SL.randomForest")
+sl_rf
+```
+
+Risk is a measure of model accuracy or performance. We want our models to minimize the estimated risk, which means the model is making the fewest mistakes in its prediction. It's basically the mean-squared error in a regression model, but you can customize it if you want.
+
+SuperLearner is using cross-validation to estimate the risk on future data. By default it uses 10 folds; use the cvControl argument to customize.
+
+## Fit ensemble
+
+Instead of fitting the models separately and looking at the performance (lowest risk), let's fit them simultaneously. SuperLearner will then tell us which one is best (Discrete winner) and also create a weighted average of multiple models.
+
+We include the mean of Y ("SL.mean") as a benchmark algorithm. We hope to see that it isn't the best single algorithm (discrete winner) and has a low weight in the weighted-average ensemble.
+
+```{r}
+set.seed(1)
+sl = SuperLearner(Y = Y, X = X, family = binomial(),
+                  SL.library = c("SL.mean", "SL.glmnet", "SL.randomForest"))
+sl
+
+# Review how long it took to run the SuperLearner:
+sl$times$everything
+```
+
+The coefficient is how much weight SuperLearner puts on that model in the weighted-average. So if coefficient = 0 it means that model is not used at all. Here we see that Lasso is given all of the weight.
+
+So we have an automatic ensemble of multiple learners based on the cross-validated performance of those learners, woo!
+
+## Predict on data
+
+Now that we have an ensemble let's predict back on our holdout dataset and review the results.
+
+```{r}
+# Predict back on the holdout dataset.
+# (Not strictly necessary, but pretending that we have another dataset to check.)
+# onlySL is specified so we don't fit algorithms that had weight = 0.
+pred = predict(sl, X_holdout, onlySL = T)
+
+# Check the structure of this prediction object.
+str(pred)
+
+# We can see which columns are being populated the library.predict.
+summary(pred$library.predict)
+
+# Histogram of our predicted values.
+qplot(pred$pred) + theme_bw()
+
+# Scatterplot of original values (0, 1) and predicted values.
+# Ideally we would use jitter or slight transparency to deal with overlap.
+qplot(Y_holdout, pred$pred) + theme_bw()
+
+# Review AUC - Area Under Curve
+pred_rocr = ROCR::prediction(pred$pred, Y_holdout)
+auc = ROCR::performance(pred_rocr, measure = "auc", x.measure = "cutoff")@y.values[[1]]
+auc
+```
+
+AUC goes from 0.5 (terrible) to 1.0 (perfect). So we are looking pretty good!
+
+## Fit ensemble with external cross-validation.
+
+What we don't have yet is an estimate of the performance of the ensemble itself. Right now we are just hopeful that the ensemble weights are successful in improving over the best single algorithm. 
+
+In order to estimate the performance of the SuperLearner ensemble we need an "external" layer of cross-validation. So we have a separate holdout sample that we don't use to fit the SuperLearner, which allows it to be a good estimate of the SuperLearner's performance on unseen data.
+
+Another nice result is that we get standard errors on the performance of the individual algorithms and can compare them to the SuperLearner.
+
+```{r}
+set.seed(1)
+
+# Don't have timing info for the CV.SuperLearner unfortunately.
+# So we need to time it manually.
+
+system.time({
+  # This will take about 5x as long as the previous SuperLearner.
+  cv_sl = CV.SuperLearner(Y = Y, X = X, family = binomial(), V = 5,
+                  SL.library = c("SL.mean", "SL.glmnet", "SL.randomForest"))
+})
+
+# We run summary on the cv_sl object rather than simply printing the object.
+summary(cv_sl)
+
+
+# Review the distribution of the best single learner as external CV folds.
+table(simplify2array(cv_sl$whichDiscreteSL))
+
+# Plot the performance with 95% CIs (use a better ggplot theme).
+library(ggplot2)
+plot(cv_sl) + theme_bw()
+
+# Save to a file.
+ggsave("SuperLearner.png")
+
+```
+
+We see based on the outer cross-validation that SuperLearner is basically tying with the best algorithm.
+
+## Customize a model hyperparameter
+
+Hyperparameters are the configuration settings for an algorithm. OLS has no hyperparameters but every other algorithm does.
+
+There are two ways to customize a hyperparameter: make a new learner function, or use create.Learner() (currently available only in development version of SuperLearner).
+
+Let's make a variant of RandomForest that fits more trees, which should increase our accuracy.
+
+```{r}
+set.seed(1)
+
+# Review the function argument defaults at the top.
+SL.randomForest
+
+# Create a new function that changes just the ntree argument.
+# (We could do this in a single line.)
+SL.rf.better = function(...) {
+  SL.randomForest(..., ntree = 3000)
+}
+
+set.seed(1)
+
+# Fit the CV.SuperLearner.
+cv_sl = CV.SuperLearner(Y = Y, X = X, family = binomial(), V = 5,
+                  SL.library = c("SL.mean", "SL.glmnet", "SL.rf.better", "SL.randomForest"))
+
+# Review results.
+summary(cv_sl)
+```
+
+We can do the same thing with create.Learner().
+
+```{r}
+# Customize the defaults for randomForest.
+learners = create.Learner("SL.randomForest", params = list(ntree = 3000))
+
+# Look at the object.
+learners
+
+# List the functions that were created
+learners$names
+
+# Review the code that was automatically generated for the function:
+SL.randomForest_1
+
+set.seed(1)
+
+# Fit the CV.SuperLearner.
+cv_sl = CV.SuperLearner(Y = Y, X = X, family = binomial(), V = 5,
+                  SL.library = c("SL.mean", "SL.glmnet", learners$names, "SL.randomForest"))
+
+# Review results.
+summary(cv_sl)
+```
+
+We get exactly the same results between the two methods.
+
+## Fit multiple hyperparameters for a learner (e.g. RF)
+
+The performance of an algorithm varies based on its hyperparamters, which again are its configuration settings. Some algorithms may not vary much, and others might have much better or worse performance for certain settings. Often we focus our attention on 1 or 2 hyperparameters for a given algorithm because they are the most important ones.
+
+For randomForest there are two hyperparameters we want to explore: mtry and maximum leaf nodes. Mtry is how many features are randomly chosen within each decision tree node. Maximum leaf nodes controls how complex each tree can get.
+
+Let's try 3 different mtry options.
+
+```{r}
+# sqrt(p) is the default value of mtry for classification.
+floor(sqrt(ncol(X)))
+
+# Let's try 3 multiplies of this default: 0.5, 1, and 2.
+mtry_seq = floor(sqrt(ncol(X)) * c(0.5, 1, 2))
+mtry_seq
+
+learners = create.Learner("SL.randomForest", tune = list(mtry = mtry_seq))
+
+# Review the resulting object
+learners
+
+# Check code for the learners that were created.
+SL.randomForest_1
+SL.randomForest_2
+SL.randomForest_3
+
+set.seed(1)
+
+# Fit the CV.SuperLearner.
+cv_sl = CV.SuperLearner(Y = Y, X = X, family = binomial(), V = 5,
+                  SL.library = c("SL.mean", "SL.glmnet", learners$names, "SL.randomForest"))
+
+# Review results.
+summary(cv_sl)
+```
+
+We see here that mtry = 14 performed a little bit better than mtry = 3 or mtry = 7, although the difference is not significant. If we used more data and more cross-validation folds we might see more significant differences. A higher mtry does better when a small percentage of variables are predictive of the outcome, because it gives each tree a better chance of finding a useful variable.
+
+Note that SL.randomForest and SL.randomForest_2 have the same settings, and their performance is very similar - statistically a tie. It's not exactly the same due to random variation in the two forests.
+
+## Multicore parallelization
+
+SuperLearner makes it easy to use multiple CPU cores on your computer to speed up the calculations. We need to tell R to use multiple CPUs, then change our function to mcSuperLearner.
+
+```{r}
+# Setup parallel computation - use all cores on our computer.
+# (Install "parallel" and "RhpcBLASctl" if you don't already have those packages.)
+num_cores = RhpcBLASctl::get_num_cores()
+
+# How many cores does this computer have?
+num_cores
+
+# Use all of those cores for parallel SuperLearner.
+options(mc.cores = num_cores)
+
+# Check how many parallel workers we are using: 
+getOption("mc.cores")
+
+# We need to set a different type of seed that works across cores.
+# Otherwise the other cores will go rogue and we won't get repeatable results.
+set.seed(1, "L'Ecuyer-CMRG")
+
+# Fit the CV.SuperLearner.
+system.time({
+  cv_sl = CV.SuperLearner(Y = Y, X = X, family = binomial(), V = 5, parallel = "multicore",
+                  SL.library = c("SL.mean", "SL.glmnet", learners$names, "SL.randomForest"))
+})
+
+
+# Review results.
+summary(cv_sl)
+```
+
+The "user" component of time is essentially how long it would take on a single core. And the "elapsed" component is how long it actually took. So we can see some gain from using multiple cores. 
+
+If we want to use multiple cores for normal SuperLearner, not CV.SuperLearner, we need to change the function name to `mcSuperLearner`.
+
+```{r}
+# Set multicore compatible seed.
+set.seed(1, "L'Ecuyer-CMRG")
+
+# Fit the SuperLearner.
+sl = mcSuperLearner(Y = Y, X = X, family = binomial(),
+                  SL.library = c("SL.mean", "SL.glmnet", learners$names, "SL.randomForest"))
+sl
+
+# We see the time is reduced over our initial single-core superlearner.
+sl$times$everything
+```
+
+SuperLearner also supports running across multiple computers at a time, called "multi-node" or "cluster" computing. See examples in `?SuperLearner` using `snowSuperLearner()`, and stay tuned for a future training on highly parallel SuperLearning; h2o.ai will also cover this.
+
+## Weight distribution for SuperLearner
+
+The weights or coefficients of the SuperLearner are stochastic - they will change as the data changes. So we don't necessarily trust a given set of weights as being the "true" weights, but when we use CV.SuperLearner we at least have multiple samples from the distribution of the weights.
+
+We can write a little function to extract the weights at each CV.SuperLearner iteration and summarize the distribution of those weights. (I'm going to try to get this added to the SuperLearner package sometime soon.)
+
+```{r}
+# Review meta-weights (coefficients) from a CV.SuperLearner object
+review_weights = function(cv_sl) {
+  meta_weights = coef(cv_sl)
+  means = colMeans(meta_weights)
+  sds = apply(meta_weights, MARGIN = 2,  FUN = function(col) { sd(col) })
+  mins = apply(meta_weights, MARGIN = 2, FUN = function(col) { min(col) })
+  maxs = apply(meta_weights, MARGIN = 2, FUN = function(col) { max(col) })
+  # Combine the stats into a single matrix.
+  sl_stats = cbind("mean(weight)" = means, "sd" = sds, "min" = mins, "max" = maxs)
+  # Sort by decreasing mean weight.
+  sl_stats[order(sl_stats[, 1], decreasing = T), ]
+}
+
+print(review_weights(cv_sl), digits = 3)
+```
+
+Notice that in this case the ensemble never uses the mean or the two randomForests with default mtry settings. So adding multiple configurations of randomForest was helpful.
+
+I recommend reviewing the weight distribution for any SuperLearner project to better understand which algorithms are chosen for the ensemble.
+
+## Feature selection (screening)
+
+When datasets have many covariates our algorithms may benefit from first choosing a subset of available covariates, a step called feature selection. Then we pass only those variable to the modeling algorithm, and it may be less likely to overfit to variables that are not related to the outcome.
+
+Let's revisit `listWrappers()` and check out the bottom section.
+```{r}
+listWrappers()
+
+# Review code for corP, which is based on univariate correlation.
+screen.corP
+
+set.seed(1)
+
+# Fit the SuperLearner.
+cv_sl = CV.SuperLearner(Y = Y, X = X, family = binomial(), V = 5,
+                  SL.library = list("SL.mean", "SL.glmnet", c("SL.glmnet", "screen.corP")))
+summary(cv_sl)
+```
+
+We see a nice performance boost by first screening by univarate correlation with our outcome, and only keeping variables with a p-value less than 0.10. Try using some of the other screening algorithms as they may do even better for a particular dataset.
+
+## Optimize for AUC.
+
+For binary prediction we are typically trying to maximize AUC, which can be the best performance metric when our outcome variable has some imbalance. In other words, we don't have exactly 50% 1s and 50% 0s in our outcome. Our SuperLearner is not targeting AUC by default, but it can if we tell it to by specifying our method.
+
+```{r cache=F}
+set.seed(1)
+
+cv_sl = CV.SuperLearner(Y = Y, X = X, family = binomial(), V = 5, method = "method.AUC",
+                  SL.library = list("SL.mean", "SL.glmnet", c("SL.glmnet", "screen.corP")))
+summary(cv_sl)
+```
+
+This conveniently shows us the AUC for each algorithm without us having to calculate it manually. But we aren't getting SEs - bug or feature?
+
+## XGBoost configuration
+
+XGBoost is a version of GBM that is even faster. GBM's adaptivity is determined by its configuration, so we want to thoroughly test a wide range of configurations for any given problem. Let's do 60 now. This will take a good amount of time (~7 minutes on my computer) so we need to at least use multiple cores, if not multiple computers.
+
+```{r cache=T, fig.height=8}
+# 4 * 4 * 3 = 60 different configurations.
+tune = list(ntrees = c(200, 500, 1000, 2000, 5000),
+            max_depth = 1:4,
+            shrinkage = c(0.001, 0.01, 0.1))
+
+# Set detailed names = T so we can see the configuration for each function.
+# Also shorten the name prefix.
+learners = create.Learner("SL.xgboost", tune = tune, detailed_names = T, name_prefix = "xgb")
+
+# 60 configurations - not too shabby.
+length(learners$names)
+
+# Confirm we have multiple cores configured. This should be > 1.
+getOption("mc.cores")
+
+# Remember to set multicore-compatible seed.
+set.seed(1, "L'Ecuyer-CMRG")
+
+# Fit the CV.SuperLearner.
+system.time({
+  cv_sl = CV.SuperLearner(Y = Y, X = X, family = binomial(), V = 5, parallel = "multicore",
+                  SL.library = c("SL.mean", "SL.glmnet", learners$names, "SL.randomForest"))
+})
+
+# Review results.
+summary(cv_sl)
+review_weights(cv_sl)
+plot(cv_sl) + theme_bw()
+```
+
+## Future topics
+
+Future topics to cover include (SuperLearner day 2?):
+
+* SL.caret wrapper
+* create.Learner() custom environments
+* Multi-node parallel SuperLearner
+* Cumulative library analysis
+* Individual-algorithm library analysis
+* Variable importance estimation
+* Targeted learning
+
+## Resources
+
+Upcoming Machine Learning Trainings
+
+* Erin Ledell - h2o.ai
+* Rochelle Terman - scikit-learn
+
+Campus Groups
+
+* D-Lab's Machine Learning Working Group
+* Machine Learning @ Berkeley
+* D-Lab's Cloud Computing Working Group
+* The Hacker Within / Berkeley Institute for Data Science
+
+Books:
+
+* Intro to Statistical Learning
+* Applied Predictive Modeling by MAx
+* Elements of Statistical Learning
+* Many others
+
+Courses at Berkeley:
+
+* Stat 154 - Statistical Learning
+* PH 252D  - Causal Inference
+* CS 189 / CS 289A - Machine Learning
+* PH 252E - Causal Inference II
+* PH 29X - Big Data
+* PH 295 - Targeted Learning for Biomedical Big Data
+* INFO - TBD
+* Coursera and other online classes.
+
+## References
+
+Erin LeDell, Maya L. Petersen & Mark J. van der Laan, "Computationally Efficient Confidence Intervals for Cross-validated Area Under the ROC Curve Estimates." (Electronic Journal of Statistics)
+
+Polley EC, van der Laan MJ (2010) Super Learner in Prediction. U.C. Berkeley Division of Biostatistics Working Paper Series. Paper 226. http://biostats.bepress.com/ucbbiostat/paper266/
+
+van der Laan, M. J., Polley, E. C., & Hubbard, A. E. (2007). Super learner. Statistical applications in genetics and molecular biology, 6(1).
+
+van der Laan, M. J., & Rose, S. (2011). Targeted learning: causal inference for observational and experimental data. Springer Science & Business Media.
