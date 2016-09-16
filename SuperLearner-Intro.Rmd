@@ -1,4 +1,4 @@
-# SuperLearner Guide
+# SuperLearner Introduction
 
 September 16, 2016
 
