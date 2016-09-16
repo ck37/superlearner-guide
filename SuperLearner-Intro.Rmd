@@ -11,21 +11,27 @@ Assumed prior training:
 
 ## Outline
 
-* What is SuperLearner
+* Background
 * Installing
 * Create dataset
-* Fit single models: lasso, randomForest, GBM
+* Review available models
+* Fit single models
 * Fit ensemble
-* Customize a model parameter.
-* Fit a caret model.
-* Fit ensemble with external cross-validation.
-* Plot external cross-validation results.
-* Fit multiple hyperparameters for a learner (e.g. RF)
+* Predict on new dataset
+* Customize a model setting
+* External cross-validation
+* Test multiple hyperparameter settings
+* Parallelize across CPUs
+* Distribution of ensemble weights
 * Feature selection (screening)
-* Optimize for AUC.
+* Optimize for AUC
+* XGBoost hyperparameter exploration
+* Future topics
 * References
 
 ## Background
+
+SuperLearner is an algorithm that uses cross-validation to estimate the performance of multiple machine learning models, or the same model with different settings. It then creates an optimal weighted average of those models, aka an "ensemble", using the test data performance. This approach has been proven to be asymptotically as accurate as the best possible prediction algorithm that is tested.
 
 ## Installing
 
@@ -112,9 +118,11 @@ listWrappers()
 SL.glmnet
 ```
 
+I recommend testing at least the following models: glmnet, randomForest, XGBoost, SVM, and bartMachine.
+
 ## Fit single models
 
-Let's fit 2 separate models: lasso (sparse, penalized OLS) and randomForest.
+Let's fit 2 separate models: lasso (sparse, penalized OLS) and randomForest. We specify family = binomial() because we are predicting a binary outcome, aka classification. With a continuous outcome we would specify family = gaussian().
 
 ```{r}
 set.seed(1)
@@ -181,7 +189,7 @@ auc = ROCR::performance(pred_rocr, measure = "auc", x.measure = "cutoff")@y.valu
 auc
 ```
 
-AUC goes from 0.5 (terrible) to 1.0 (perfect). So we are looking pretty good!
+AUC can range from 0.5 (no better than chance) to 1.0 (perfect). So we are looking pretty good!
 
 ## Fit ensemble with external cross-validation.
 
@@ -227,7 +235,7 @@ Hyperparameters are the configuration settings for an algorithm. OLS has no hype
 
 There are two ways to customize a hyperparameter: make a new learner function, or use create.Learner() (currently available only in development version of SuperLearner).
 
-Let's make a variant of RandomForest that fits more trees, which should increase our accuracy.
+Let's make a variant of RandomForest that fits more trees, which may increase our accuracy and can't hurt it (outside of small random variation).
 
 ```{r}
 set.seed(1)
@@ -318,6 +326,8 @@ We see here that mtry = 14 performed a little bit better than mtry = 3 or mtry =
 
 Note that SL.randomForest and SL.randomForest_2 have the same settings, and their performance is very similar - statistically a tie. It's not exactly the same due to random variation in the two forests.
 
+A key difference with SuperLearner over caret or other frameworks is that we are not trying to choose the single best hyperparameter or model. Instead, we just want the best weighted average. So we are including all of the different settings in our SuperLearner, and we may choose a weighted average that includes the same model multiple times but with different settings. That can give us better performance than choosing only the single best settings for a given algorithm (which has some random noise in any case).
+
 ## Multicore parallelization
 
 SuperLearner makes it easy to use multiple CPU cores on your computer to speed up the calculations. We need to tell R to use multiple CPUs, then change our function to mcSuperLearner.
@@ -345,7 +355,6 @@ system.time({
   cv_sl = CV.SuperLearner(Y = Y, X = X, family = binomial(), V = 5, parallel = "multicore",
                   SL.library = c("SL.mean", "SL.glmnet", learners$names, "SL.randomForest"))
 })
-
 
 # Review results.
 summary(cv_sl)
@@ -432,9 +441,9 @@ summary(cv_sl)
 
 This conveniently shows us the AUC for each algorithm without us having to calculate it manually. But we aren't getting SEs - bug or feature?
 
-## XGBoost configuration
+## XGBoost hyperparameter exploration
 
-XGBoost is a version of GBM that is even faster. GBM's adaptivity is determined by its configuration, so we want to thoroughly test a wide range of configurations for any given problem. Let's do 60 now. This will take a good amount of time (~7 minutes on my computer) so we need to at least use multiple cores, if not multiple computers.
+XGBoost is a version of GBM that is even faster and has some extra settings. GBM's adaptivity is determined by its configuration, so we want to thoroughly test a wide range of configurations for any given problem. Let's do 60 now. This will take a good amount of time (~7 minutes on my computer) so we need to at least use multiple cores, if not multiple computers.
 
 ```{r cache=T, fig.height=8}
 # 4 * 4 * 3 = 60 different configurations.
@@ -471,13 +480,12 @@ plot(cv_sl) + theme_bw()
 
 Future topics to cover include (SuperLearner day 2?):
 
-* SL.caret wrapper
 * create.Learner() custom environments
-* Multi-node parallel SuperLearner
-* Cumulative library analysis
-* Individual-algorithm library analysis
+* SL.caret wrapper
+* Parallelize across computers
+* Library analysis - cumulative
+* Library analysis - individual algorithms
 * Variable importance estimation
-* Targeted learning
 
 ## Resources
 
