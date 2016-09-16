@@ -33,6 +33,8 @@ Assumed prior training:
 
 SuperLearner is an algorithm that uses cross-validation to estimate the performance of multiple machine learning models, or the same model with different settings. It then creates an optimal weighted average of those models, aka an "ensemble", using the test data performance. This approach has been proven to be asymptotically as accurate as the best possible prediction algorithm that is tested.
 
+(I am oversimplifying this in the interest of time. Please see the references for more detailed information, especially "SuperLearner in Prediction".)
+
 ## Installing
 
 Install the stable version from CRAN:
@@ -427,7 +429,7 @@ summary(cv_sl)
 
 We see a nice performance boost by first screening by univarate correlation with our outcome, and only keeping variables with a p-value less than 0.10. Try using some of the other screening algorithms as they may do even better for a particular dataset.
 
-## Optimize for AUC.
+## Optimize for AUC
 
 For binary prediction we are typically trying to maximize AUC, which can be the best performance metric when our outcome variable has some imbalance. In other words, we don't have exactly 50% 1s and 50% 0s in our outcome. Our SuperLearner is not targeting AUC by default, but it can if we tell it to by specifying our method.
 
@@ -446,7 +448,7 @@ This conveniently shows us the AUC for each algorithm without us having to calcu
 XGBoost is a version of GBM that is even faster and has some extra settings. GBM's adaptivity is determined by its configuration, so we want to thoroughly test a wide range of configurations for any given problem. Let's do 60 now. This will take a good amount of time (~7 minutes on my computer) so we need to at least use multiple cores, if not multiple computers.
 
 ```{r cache=T, fig.height=8}
-# 4 * 4 * 3 = 60 different configurations.
+# 5 * 4 * 3 = 60 different configurations.
 tune = list(ntrees = c(200, 500, 1000, 2000, 5000),
             max_depth = 1:4,
             shrinkage = c(0.001, 0.01, 0.1))
