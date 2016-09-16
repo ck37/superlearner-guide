@@ -506,7 +506,7 @@ Campus Groups
 Books:
 
 * Intro to Statistical Learning
-* Applied Predictive Modeling by MAx
+* Applied Predictive Modeling by Max Kuhn
 * Elements of Statistical Learning
 * Many others
 
