@@ -25,8 +25,11 @@
 * create.Learner() custom environments
 * SL.caret wrapper
 * Parallelize across computers
+* Custom learner wrapper
+* Custom screener
 * Library analysis - cumulative
 * Library analysis - individual algorithms
 * Variable importance estimation
+* Multi-level meta-learning
 
 
