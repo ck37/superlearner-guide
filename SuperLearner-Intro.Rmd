@@ -168,8 +168,7 @@ Now that we have an ensemble let's predict back on our holdout dataset and revie
 
 ```{r}
 # Predict back on the holdout dataset.
-# (Not strictly necessary, but pretending that we have another dataset to check.)
-# onlySL is specified so we don't fit algorithms that had weight = 0.
+# onlySL is set to TRUE so we don't fit algorithms that had weight = 0, saving computation.
 pred = predict(sl, X_holdout, onlySL = T)
 
 # Check the structure of this prediction object.
@@ -191,7 +190,7 @@ auc = ROCR::performance(pred_rocr, measure = "auc", x.measure = "cutoff")@y.valu
 auc
 ```
 
-AUC can range from 0.5 (no better than chance) to 1.0 (perfect). So we are looking pretty good!
+AUC can range from 0.5 (no better than chance) to 1.0 (perfect). So at 0.98 we are looking pretty good!
 
 ## Fit ensemble with external cross-validation.
 
@@ -292,7 +291,7 @@ We get exactly the same results between the two methods.
 
 The performance of an algorithm varies based on its hyperparamters, which again are its configuration settings. Some algorithms may not vary much, and others might have much better or worse performance for certain settings. Often we focus our attention on 1 or 2 hyperparameters for a given algorithm because they are the most important ones.
 
-For randomForest there are two hyperparameters we want to explore: mtry and maximum leaf nodes. Mtry is how many features are randomly chosen within each decision tree node. Maximum leaf nodes controls how complex each tree can get.
+For randomForest there are two particularly important hyperparameters: mtry and maximum leaf nodes. Mtry is how many features are randomly chosen within each decision tree node. Maximum leaf nodes controls how complex each tree can get.
 
 Let's try 3 different mtry options.
 
@@ -324,15 +323,15 @@ cv_sl = CV.SuperLearner(Y = Y, X = X, family = binomial(), V = 5,
 summary(cv_sl)
 ```
 
-We see here that mtry = 14 performed a little bit better than mtry = 3 or mtry = 7, although the difference is not significant. If we used more data and more cross-validation folds we might see more significant differences. A higher mtry does better when a small percentage of variables are predictive of the outcome, because it gives each tree a better chance of finding a useful variable.
+We see here that mtry = 14 performed a little bit better than mtry = 3 or mtry = 7, although the difference is not significant. If we used more data and more cross-validation folds we might see more drastic differences. A higher mtry does better when a small percentage of variables are predictive of the outcome, because it gives each tree a better chance of finding a useful variable.
 
-Note that SL.randomForest and SL.randomForest_2 have the same settings, and their performance is very similar - statistically a tie. It's not exactly the same due to random variation in the two forests.
+Note that SL.randomForest and SL.randomForest_2 have the same settings, and their performance is very similar - statistically a tie. It's not exactly equivalent due to random variation in the two forests.
 
 A key difference with SuperLearner over caret or other frameworks is that we are not trying to choose the single best hyperparameter or model. Instead, we just want the best weighted average. So we are including all of the different settings in our SuperLearner, and we may choose a weighted average that includes the same model multiple times but with different settings. That can give us better performance than choosing only the single best settings for a given algorithm (which has some random noise in any case).
 
 ## Multicore parallelization
 
-SuperLearner makes it easy to use multiple CPU cores on your computer to speed up the calculations. We need to tell R to use multiple CPUs, then change our function to mcSuperLearner.
+SuperLearner makes it easy to use multiple CPU cores on your computer to speed up the calculations. We need to tell R to use multiple CPUs, then tell `CV.SuperLearner` to use multiple cores.
 
 ```{r}
 # Setup parallel computation - use all cores on our computer.
@@ -364,7 +363,7 @@ summary(cv_sl)
 
 The "user" component of time is essentially how long it would take on a single core. And the "elapsed" component is how long it actually took. So we can see some gain from using multiple cores. 
 
-If we want to use multiple cores for normal SuperLearner, not CV.SuperLearner, we need to change the function name to `mcSuperLearner`.
+If we want to use multiple cores for normal SuperLearner, not CV.SuperLearner (i.e. external cross-validation to estimate performance), we need to change the function name to `mcSuperLearner`.
 
 ```{r}
 # Set multicore compatible seed.
