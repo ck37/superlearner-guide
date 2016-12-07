@@ -244,8 +244,6 @@ There are two ways to customize a hyperparameter: make a new learner function, o
 Let's make a variant of RandomForest that fits more trees, which may increase our accuracy and can't hurt it (outside of small random variation).
 
 ```{r}
-set.seed(1)
-
 # Review the function argument defaults at the top.
 SL.randomForest
 
@@ -515,7 +513,7 @@ Campus Groups:
 
 Books:
 
-* Intro to Statistical Learning
+* Intro to Statistical Learning by Gareth James et al.
 * Applied Predictive Modeling by Max Kuhn
 * Elements of Statistical Learning
 * Many others
