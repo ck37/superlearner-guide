@@ -24,6 +24,7 @@ Assumed prior training:
 * Parallelize across CPUs
 * Distribution of ensemble weights
 * Feature selection (screening)
+* Optimize for nnLogLik
 * Optimize for AUC
 * XGBoost hyperparameter exploration
 * Future topics
@@ -44,11 +45,12 @@ install.packages("SuperLearner")
 
 Or the development version from Github:
 ```{r eval=F}
-if (!require(devtools)) install.packages("devtools")
+# Install devtools first:
+# install.packages("devtools")
 devtools::install_github("ecpolley/SuperLearner")
 ```
 
-The Github version has some new features, fixes some bugs, but may also introduce new bugs. Let's use the github version, and if we run into any bugs we can report them.
+The Github version generally has some new features, fixes some bugs, but may also introduce new bugs. We will use the github version, and if we run into any bugs we can report them. This material is also currently consistent with the latest SuperLearner on CRAN (2.0-21).
 
 ## Create dataset
 
@@ -67,7 +69,7 @@ data = na.omit(BreastCancer)
 # Set a seed for reproducibility in this random sampling.
 set.seed(1)
 
-# Expand out factors into indicators.
+# Remove Id and Class columns; expand out factors into indicators.
 data2 = data.frame(model.matrix( ~ . - 1, subset(data, select = -c(Id, Class))))
 
 # Check dimensions after we expand our dataset.
@@ -120,7 +122,7 @@ listWrappers()
 SL.glmnet
 ```
 
-I recommend testing at least the following models: glmnet, randomForest, XGBoost, SVM, and bartMachine.
+For maximum accuracy I recommend testing at least the following models: glmnet, randomForest, XGBoost, SVM, and bartMachine. These should be tested with multiple hyperparameter settings for each algorithm.
 
 ## Fit single models
 
@@ -142,11 +144,13 @@ Risk is a measure of model accuracy or performance. We want our models to minimi
 
 SuperLearner is using cross-validation to estimate the risk on future data. By default it uses 10 folds; use the cvControl argument to customize.
 
+The coefficient column tells us the weight or importance of each individual learner in the overall ensemble. In this case we only have one algorithm so the coefficient has to be 1. If a coefficient is 0 it means that the algorithm isn't being used in the SuperLearner ensemble.
+
 ## Fit ensemble
 
 Instead of fitting the models separately and looking at the performance (lowest risk), let's fit them simultaneously. SuperLearner will then tell us which one is best (Discrete winner) and also create a weighted average of multiple models.
 
-We include the mean of Y ("SL.mean") as a benchmark algorithm. We hope to see that it isn't the best single algorithm (discrete winner) and has a low weight in the weighted-average ensemble.
+We include the mean of Y ("SL.mean") as a benchmark algorithm. It is a very simple prediction so the more complex algorithms should do better than the sample mean. We hope to see that it isn't the best single algorithm (discrete winner) and has a low weight in the weighted-average ensemble. If it is the best algorithm something has likely gone wrong.
 
 ```{r}
 set.seed(1)
@@ -158,7 +162,7 @@ sl
 sl$times$everything
 ```
 
-The coefficient is how much weight SuperLearner puts on that model in the weighted-average. So if coefficient = 0 it means that model is not used at all. Here we see that Lasso is given all of the weight.
+Again, the coefficient is how much weight SuperLearner puts on that model in the weighted-average. So if coefficient = 0 it means that model is not used at all. Here we see that Lasso is given all of the weight.
 
 So we have an automatic ensemble of multiple learners based on the cross-validated performance of those learners, woo!
 
@@ -178,6 +182,7 @@ str(pred)
 summary(pred$library.predict)
 
 # Histogram of our predicted values.
+library(ggplot2)
 qplot(pred$pred) + theme_bw()
 
 # Scatterplot of original values (0, 1) and predicted values.
@@ -196,7 +201,7 @@ AUC can range from 0.5 (no better than chance) to 1.0 (perfect). So at 0.98 we a
 
 What we don't have yet is an estimate of the performance of the ensemble itself. Right now we are just hopeful that the ensemble weights are successful in improving over the best single algorithm. 
 
-In order to estimate the performance of the SuperLearner ensemble we need an "external" layer of cross-validation. So we have a separate holdout sample that we don't use to fit the SuperLearner, which allows it to be a good estimate of the SuperLearner's performance on unseen data.
+In order to estimate the performance of the SuperLearner ensemble we need an "external" layer of cross-validation. We generate a separate holdout sample that we don't use to fit the SuperLearner, which allows it to be a good estimate of the SuperLearner's performance on unseen data. Typically we would run 10 or 20-fold external cross-validation, but even 5-fold is reasonable.
 
 Another nice result is that we get standard errors on the performance of the individual algorithms and can compare them to the SuperLearner.
 
@@ -220,21 +225,21 @@ summary(cv_sl)
 table(simplify2array(cv_sl$whichDiscreteSL))
 
 # Plot the performance with 95% CIs (use a better ggplot theme).
-library(ggplot2)
 plot(cv_sl) + theme_bw()
 
 # Save to a file.
 ggsave("SuperLearner.png")
 
 ```
+We see two SuperLearner results: "Super Learner" and "Discrete SL". "Discrete SL" chooses the best single learner - in this case SL.glmnet (lasso). "Super Learner" takes a weighted average of the learners using the coefficients/weights that we examined earlier. In general "Super Learner" should perform a little better than "Discrete SL".
 
-We see based on the outer cross-validation that SuperLearner is basically tying with the best algorithm.
+We see based on the outer cross-validation that SuperLearner is statistically tying with the best algorithm. Our benchmark learner "SL.mean" shows that we getting a nice improvement over a naive guess based only on the mean. We could also add "SL.glm" to compare to logistic regression and would see that we have much better accuracy.
 
 ## Customize a model hyperparameter
 
-Hyperparameters are the configuration settings for an algorithm. OLS has no hyperparameters but every other algorithm does.
+Hyperparameters are the configuration settings for an algorithm. OLS has no hyperparameters but essentially every other algorithm does.
 
-There are two ways to customize a hyperparameter: make a new learner function, or use create.Learner() (currently available only in development version of SuperLearner).
+There are two ways to customize a hyperparameter: make a new learner function, or use create.Learner().
 
 Let's make a variant of RandomForest that fits more trees, which may increase our accuracy and can't hurt it (outside of small random variation).
 
@@ -246,6 +251,7 @@ SL.randomForest
 
 # Create a new function that changes just the ntree argument.
 # (We could do this in a single line.)
+# "..." means "all other arguments that were sent to the function"
 SL.rf.better = function(...) {
   SL.randomForest(..., ntree = 3000)
 }
@@ -260,7 +266,9 @@ cv_sl = CV.SuperLearner(Y = Y, X = X, family = binomial(), V = 5,
 summary(cv_sl)
 ```
 
-We can do the same thing with create.Learner().
+Looks like our new RF is not improving performance. This implies that the original 500 trees had already reached the performance plateau - a maximum accuracy that RF can achieve unless other settings are changed (e.g. max nodes).
+
+For comparison we can do the same hyperparamter customization with create.Learner().
 
 ```{r}
 # Customize the defaults for randomForest.
@@ -272,7 +280,8 @@ learners
 # List the functions that were created
 learners$names
 
-# Review the code that was automatically generated for the function:
+# Review the code that was automatically generated for the function.
+# Notice that it's exactly the same as the function we made manually.
 SL.randomForest_1
 
 set.seed(1)
@@ -352,8 +361,10 @@ getOption("mc.cores")
 set.seed(1, "L'Ecuyer-CMRG")
 
 # Fit the CV.SuperLearner.
+# While this is running check CPU using in Activity Monitor / Task Manager.
 system.time({
-  cv_sl = CV.SuperLearner(Y = Y, X = X, family = binomial(), V = 5, parallel = "multicore",
+  cv_sl = CV.SuperLearner(Y = Y, X = X, family = binomial(), V = 10,
+                  parallel = "multicore",
                   SL.library = c("SL.mean", "SL.glmnet", learners$names, "SL.randomForest"))
 })
 
@@ -421,12 +432,13 @@ screen.corP
 set.seed(1)
 
 # Fit the SuperLearner.
-cv_sl = CV.SuperLearner(Y = Y, X = X, family = binomial(), V = 5,
+# We need to use list() instead of c().
+cv_sl = CV.SuperLearner(Y = Y, X = X, family = binomial(), V = 10, parallel = "multicore",
                   SL.library = list("SL.mean", "SL.glmnet", c("SL.glmnet", "screen.corP")))
 summary(cv_sl)
 ```
 
-We see a nice performance boost by first screening by univarate correlation with our outcome, and only keeping variables with a p-value less than 0.10. Try using some of the other screening algorithms as they may do even better for a particular dataset.
+We see a small performance boost by first screening by univarate correlation with our outcome, and only keeping variables with a p-value less than 0.10. Try using some of the other screening algorithms as they may do even better for a particular dataset.
 
 ## Optimize for AUC
 
@@ -440,7 +452,9 @@ cv_sl = CV.SuperLearner(Y = Y, X = X, family = binomial(), V = 5, method = "meth
 summary(cv_sl)
 ```
 
-This conveniently shows us the AUC for each algorithm without us having to calculate it manually. But we aren't getting SEs - bug or feature?
+This conveniently shows us the AUC for each algorithm without us having to calculate it manually. But we aren't getting SEs sadly.
+
+Another important optimizer to consider non-negative log likelihood, which is intended for binary outcomes and will often work better than NNLS (the default). This is specified by method = "NNloglik".
 
 ## XGBoost hyperparameter exploration
 
@@ -465,7 +479,7 @@ getOption("mc.cores")
 # Remember to set multicore-compatible seed.
 set.seed(1, "L'Ecuyer-CMRG")
 
-# Fit the CV.SuperLearner.
+# Fit the CV.SuperLearner. This will take 5-15 minutes.
 system.time({
   cv_sl = CV.SuperLearner(Y = Y, X = X, family = binomial(), V = 5, parallel = "multicore",
                   SL.library = c("SL.mean", "SL.glmnet", learners$names, "SL.randomForest"))
@@ -476,6 +490,8 @@ summary(cv_sl)
 review_weights(cv_sl)
 plot(cv_sl) + theme_bw()
 ```
+
+We can see how stochastic the weights are for an individual execution of SuperLearner.
 
 ## Future topics
 
@@ -490,12 +506,7 @@ Future topics to cover include (SuperLearner day 2?):
 
 ## Resources
 
-Upcoming Machine Learning Trainings
-
-* Erin Ledell - h2o.ai
-* Rochelle Terman - scikit-learn
-
-Campus Groups
+Campus Groups:
 
 * D-Lab's Machine Learning Working Group
 * Machine Learning @ Berkeley
@@ -512,13 +523,13 @@ Books:
 Courses at Berkeley:
 
 * Stat 154 - Statistical Learning
-* PH 252D  - Causal Inference
 * CS 189 / CS 289A - Machine Learning
-* PH 252E - Causal Inference II
-* PH 29X - Big Data
+* PH 252D  - Causal Inference
+* PH 295 - Big Data
 * PH 295 - Targeted Learning for Biomedical Big Data
 * INFO - TBD
-* Coursera and other online classes.
+
+Also many Coursera offerings and other online classes.
 
 ## References
 
