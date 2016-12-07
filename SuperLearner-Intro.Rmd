@@ -24,7 +24,6 @@ Assumed prior training:
 * Parallelize across CPUs
 * Distribution of ensemble weights
 * Feature selection (screening)
-* Optimize for nnLogLik
 * Optimize for AUC
 * XGBoost hyperparameter exploration
 * Future topics
