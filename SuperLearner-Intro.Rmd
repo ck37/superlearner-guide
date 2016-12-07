@@ -1,6 +1,6 @@
 # SuperLearner Introduction
 
-September 16, 2016
+December 7, 2016
 
 Instructor: Chris Kennedy
 
