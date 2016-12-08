@@ -49,7 +49,11 @@ The Github version generally has some new features, fixes some bugs, but may als
 
 Install the other packages we will use:
 ```{r eval=F}
-install.packages(c("mlbench", "caret", "glmnet", "randomForest", "xgboost", "ggplot2", "RhpcBLASctl"))
+install.packages(c("mlbench", "caret", "glmnet", "randomForest", "ggplot2", "RhpcBLASctl"))
+```
+For XGBoost we need to tweak the install command a bit; Windows users may need to install [Rtools](https://cran.r-project.org/bin/windows/Rtools/) first.
+```{r eval=F}
+install.packages("xgboost", repos=c("http://dmlc.ml/drat/", getOption("repos")), type="source")
 ```
 
 ## Background
@@ -505,6 +509,10 @@ plot(cv_sl) + theme_bw()
 ```
 
 We can see how stochastic the weights are for an individual execution of SuperLearner.
+
+__Troubleshooting__
+
+* If you get an error about predict for xgb.Booster, you probably need to install the latest version of XGBoost from github.
 
 ## Future topics
 
