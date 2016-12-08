@@ -29,7 +29,7 @@ Assumed prior training:
 * Future topics
 * References
 
-## Software requirements
+## Software requirements and installation
 
 Make sure to have R 3.2 or greater, and preferably 3.3+.
 
@@ -513,51 +513,3 @@ We can see how stochastic the weights are for an individual execution of SuperLe
 __Troubleshooting__
 
 * If you get an error about predict for xgb.Booster, you probably need to install the latest version of XGBoost from github.
-
-## Future topics
-
-Future topics to cover include (SuperLearner day 2?):
-
-* create.Learner() custom environments
-* SL.caret wrapper
-* Parallelize across computers
-* Library analysis - cumulative
-* Library analysis - individual algorithms
-* Variable importance estimation
-
-## Resources
-
-Campus Groups:
-
-* D-Lab's Machine Learning Working Group
-* Machine Learning @ Berkeley
-* D-Lab's Cloud Computing Working Group
-* The Hacker Within / Berkeley Institute for Data Science
-
-Books:
-
-* Intro to Statistical Learning by Gareth James et al.
-* Applied Predictive Modeling by Max Kuhn
-* Elements of Statistical Learning
-* Many others
-
-Courses at Berkeley:
-
-* Stat 154 - Statistical Learning
-* CS 189 / CS 289A - Machine Learning
-* PH 252D  - Causal Inference
-* PH 295 - Big Data
-* PH 295 - Targeted Learning for Biomedical Big Data
-* INFO - TBD
-
-Also many Coursera offerings and other online classes.
-
-## References
-
-Erin LeDell, Maya L. Petersen & Mark J. van der Laan, "Computationally Efficient Confidence Intervals for Cross-validated Area Under the ROC Curve Estimates." (Electronic Journal of Statistics)
-
-Polley EC, van der Laan MJ (2010) Super Learner in Prediction. U.C. Berkeley Division of Biostatistics Working Paper Series. Paper 226. http://biostats.bepress.com/ucbbiostat/paper266/
-
-van der Laan, M. J., Polley, E. C., & Hubbard, A. E. (2007). Super learner. Statistical applications in genetics and molecular biology, 6(1).
-
-van der Laan, M. J., & Rose, S. (2011). Targeted learning: causal inference for observational and experimental data. Springer Science & Business Media.
