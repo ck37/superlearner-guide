@@ -13,7 +13,6 @@ Assumed prior training:
 
 * Software requirements
 * Background
-* Installing
 * Create dataset
 * Review available models
 * Fit single models
@@ -32,18 +31,9 @@ Assumed prior training:
 
 ## Software requirements
 
-* R 3.2 or greater
-* R packages: SuperLearner, mlbench, caret, glmnet, randomForest, xgboost, ggplot2, RhpcBLASctl
+Make sure to have R 3.2 or greater, and preferably 3.3+.
 
-## Background
-
-SuperLearner is an algorithm that uses cross-validation to estimate the performance of multiple machine learning models, or the same model with different settings. It then creates an optimal weighted average of those models, aka an "ensemble", using the test data performance. This approach has been proven to be asymptotically as accurate as the best possible prediction algorithm that is tested.
-
-(I am oversimplifying this in the interest of time. Please see the references for more detailed information, especially "SuperLearner in Prediction".)
-
-## Installing
-
-Install the stable version from CRAN:
+Install the stable version of SuperLearner from CRAN:
 ```{r eval=F}
 install.packages("SuperLearner")
 ```
@@ -56,6 +46,17 @@ devtools::install_github("ecpolley/SuperLearner")
 ```
 
 The Github version generally has some new features, fixes some bugs, but may also introduce new bugs. We will use the github version, and if we run into any bugs we can report them. This material is also currently consistent with the latest SuperLearner on CRAN (2.0-21).
+
+Install the other packages we will use:
+```{r eval=F}
+install.packages(c("mlbench", "caret", "glmnet", "randomForest", "xgboost", "ggplot2", "RhpcBLASctl"))
+```
+
+## Background
+
+SuperLearner is an algorithm that uses cross-validation to estimate the performance of multiple machine learning models, or the same model with different settings. It then creates an optimal weighted average of those models, aka an "ensemble", using the test data performance. This approach has been proven to be asymptotically as accurate as the best possible prediction algorithm that is tested.
+
+(I am oversimplifying this in the interest of time. Please see the references for more detailed information, especially "SuperLearner in Prediction".)
 
 ## Create dataset
 
