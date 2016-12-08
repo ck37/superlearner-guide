@@ -11,6 +11,7 @@ Assumed prior training:
 
 ## Outline
 
+* Software requirements
 * Background
 * Installing
 * Create dataset
@@ -28,6 +29,11 @@ Assumed prior training:
 * XGBoost hyperparameter exploration
 * Future topics
 * References
+
+## Software requirements
+
+* R 3.2 or greater
+* R packages: SuperLearner, mlbench, caret, glmnet, randomForest, xgboost, ggplot2, RhpcBLASctl
 
 ## Background
 
@@ -107,6 +113,7 @@ str(X)
 
 # Clean up
 rm(data2, outcome)
+
 ```
 
 ## Review available models
@@ -133,6 +140,12 @@ set.seed(1)
 # Fit lasso model.
 sl_lasso = SuperLearner(Y = Y, X = X, family = binomial(), SL.library = "SL.glmnet")
 sl_lasso
+
+# Review the elements in the SuperLearner object.
+names(sl_lasso)
+
+# Here is the raw glmnet result object:
+str(sl_lasso$fitLibrary$SL.glmnet_All$object)
 
 # Fit random forest.
 sl_rf = SuperLearner(Y = Y, X = X, family = binomial(), SL.library = "SL.randomForest")
@@ -447,6 +460,7 @@ set.seed(1)
 cv_sl = CV.SuperLearner(Y = Y, X = X, family = binomial(), V = 5, method = "method.AUC",
                   SL.library = list("SL.mean", "SL.glmnet", c("SL.glmnet", "screen.corP")))
 summary(cv_sl)
+
 ```
 
 This conveniently shows us the AUC for each algorithm without us having to calculate it manually. But we aren't getting SEs sadly.
@@ -469,6 +483,7 @@ learners = create.Learner("SL.xgboost", tune = tune, detailed_names = T, name_pr
 
 # 60 configurations - not too shabby.
 length(learners$names)
+learners$names
 
 # Confirm we have multiple cores configured. This should be > 1.
 getOption("mc.cores")
