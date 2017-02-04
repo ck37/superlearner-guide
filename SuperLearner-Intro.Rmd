@@ -149,6 +149,9 @@ sl_lasso
 # Review the elements in the SuperLearner object.
 names(sl_lasso)
 
+# Here is the risk of the best model (discrete SuperLearner winner).
+sl_lasso$cvRisk[which.min(sl_lasso$cvRisk)]
+
 # Here is the raw glmnet result object:
 str(sl_lasso$fitLibrary$SL.glmnet_All$object)
 
