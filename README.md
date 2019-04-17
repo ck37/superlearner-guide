@@ -1,6 +1,6 @@
 # SuperLearner Guide
 
-A guide to using SuperLearner for prediction.
+A guide to using SuperLearner for prediction. This is now included as a [vignette in the SuperLearner package](https://cran.r-project.org/web/packages/SuperLearner/vignettes/Guide-to-SuperLearner.html).
 
 ## [SuperLearner Intro](https://github.com/ck37/superlearner-guide/blob/master/SuperLearner-Intro.Rmd)
 
