@@ -2,6 +2,8 @@
 
 A guide to using SuperLearner for prediction. This is now included as a [vignette in the SuperLearner package](https://cran.r-project.org/web/packages/SuperLearner/vignettes/Guide-to-SuperLearner.html).
 
+Note: this tutorial is a bit out of date; some supplemental methods are now in my [ck37r package](https://github.com/ck37/ck37r#functions).
+
 ## [SuperLearner Intro](https://github.com/ck37/superlearner-guide/blob/master/SuperLearner-Intro.Rmd)
 
 * Installing
